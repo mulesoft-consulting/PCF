@@ -1,0 +1,9 @@
+%dw 1.0
+%output application/java
+---
+[{
+	gender: "????",
+	phone: "????",
+	id: 1,
+	ssn: "????"
+}]

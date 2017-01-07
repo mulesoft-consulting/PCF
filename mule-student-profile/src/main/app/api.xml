@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:api-platform-gw="http://www.mulesoft.org/schema/mule/api-platform-gw" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/api-platform-gw http://www.mulesoft.org/schema/mule/api-platform-gw/current/mule-api-platform-gw.xsd">
+    <http:listener-config name="api-httpListenerConfig" host="0.0.0.0" port="8080" doc:name="HTTP Listener Configuration"/>
+    <apikit:config name="api-config" raml="api.raml" consoleEnabled="false" doc:name="Router"/>
+    <db:mysql-config name="MySQL_Configuration" host="${pcf.db.host}" port="${pcf.db.port}" user="${pcf.db.user}" password="${pcf.db.password}" database="${pcf.db.database}" doc:name="MySQL Configuration"/>
+    <http:request-config name="HTTP_Request_Configuration" protocol="HTTP" host="${pcf.spring.student.host}" port="80" doc:name="HTTP Request Configuration"/>
+    <configuration doc:name="Configuration">
+  <expression-language>
+   <global-functions>
+    def getIPAddr() {
+    return java.net.InetAddress.getLocalHost().getHostAddress()
+    }
+    
+   </global-functions>
+  </expression-language>
+ </configuration>
+    <flow name="api-main">
+        <http:listener config-ref="api-httpListenerConfig" path="/api/*" doc:name="HTTP"/>
+        <apikit:router config-ref="api-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="api-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="api-console">
+        <http:listener config-ref="api-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console config-ref="api-config" doc:name="APIkit Console"/>
+    </flow>
+    <flow name="get:/student:api-config">
+<scatter-gather doc:name="Scatter-Gather">
+            <processor-chain>
+                <db:select config-ref="MySQL_Configuration" doc:name="StudentTable">
+                    <db:parameterized-query><![CDATA[select * from studentInfo]]></db:parameterized-query>
+                </db:select>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:input-payload doc:sample="sample_data/list_map.dwl"/>
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+
+payload[0]]]></dw:set-payload>
+                </dw:transform-message>
+            </processor-chain>
+            <processor-chain>
+                <http:request config-ref="HTTP_Request_Configuration" path="students" method="GET" doc:name="Call SpringBoot"/>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+                </dw:transform-message>
+            </processor-chain>
+        </scatter-gather>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	"Courses" : payload[1],
+	"PersonalDetails" : payload[0],
+	"MuleIPAddress" :  getIPAddr()
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <json:object-to-json-transformer metadata:id="b9a4d2c4-f0b5-4205-a825-e2ef2c715e81" doc:name="Object to JSON"/>
+
+    </flow>
+    <flow name="get:/student/{student-id}:api-config">
+        <scatter-gather doc:name="Scatter-Gather">
+            <processor-chain>
+                <db:select config-ref="MySQL_Configuration" doc:name="StudentTable">
+                    <db:parameterized-query><![CDATA[select * from studentInfo where id = #[flowVars.'student-id']]]></db:parameterized-query>
+                </db:select>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:input-payload doc:sample="sample_data/list_map.dwl"/>
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+
+payload[0]]]></dw:set-payload>
+                </dw:transform-message>
+            </processor-chain>
+            <processor-chain>
+                <http:request config-ref="HTTP_Request_Configuration" path="students/{id}" method="GET" doc:name="Call SpringBoot">
+                    <http:request-builder>
+                        <http:uri-param paramName="id" value="#[flowVars.'student-id']"/>
+                    </http:request-builder>
+                </http:request>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+                </dw:transform-message>
+            </processor-chain>
+        </scatter-gather>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	"Courses" : payload[1],
+	"PersonalDetails" : payload[0],
+	"MuleIPAddress" :  getIPAddr()
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <json:object-to-json-transformer metadata:id="b9a4d2c4-f0b5-4205-a825-e2ef2c715e81" doc:name="Object to JSON"/>
+    </flow>
+    <apikit:mapping-exception-strategy name="api-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+</mule>
